@@ -15,21 +15,24 @@ get_next_time() {
     grep "^time" $INI_FILE | sed 's/time = //'
 }
 
-# 更新 .ini 文件中的時間
-update_ini_time() {
-    local new_time=$1
-    sed -i "s/^time = .*/time = $new_time/" $INI_FILE
-}
+# 更新排程
+update_cron() {
+    local next_time=$1
 
-# 啟動排程
-start_scheduler() {
-    NEXT_TIME=$(get_next_time)
-    if [ -z "$NEXT_TIME" ]; then
-        log_error "未能從 $INI_FILE 中提取時間"
+    # 計算時間（cron 格式）
+    CRON_TIME=$(date -d "$next_time" "+%M %H %d %m *")
+    if [ $? -ne 0 ]; then
+        log_error "無法解析時間格式：$next_time"
         exit 1
     fi
 
-    # 執行一次 MOA.py
+    # 更新 crontab
+    (crontab -l 2>/dev/null | grep -v "$0"; echo "$CRON_TIME $PWD/$0 start >> $ERROR_LOG 2>&1") | crontab -
+    echo "已添加新的排程：$CRON_TIME 執行 $0 start"
+}
+
+# 執行主任務並設置下一次排程
+run_task() {
     echo "執行 $PYTHON_SCRIPT_PATH..."
     python3 $PYTHON_SCRIPT_PATH >> $ERROR_LOG 2>&1
     if [ $? -ne 0 ]; then
@@ -37,36 +40,30 @@ start_scheduler() {
         exit 1
     fi
 
-    # 計算新時間（加 3 小時）
-    NEW_TIME=$(date -d "$NEXT_TIME" "+%Y-%m-%d %H:%M:%S")
+    # 從 .ini 文件中獲取下一次時間
+    NEXT_TIME=$(get_next_time)
+    if [ -z "$NEXT_TIME" ]; then
+        log_error "未能從 $INI_FILE 中提取時間"
+        exit 1
+    fi
+    echo "下一次排程時間為：$NEXT_TIME"
 
-    # 更新 .ini 文件中的時間
-    update_ini_time "$NEW_TIME"
-    echo "已將新時間更新到 $INI_FILE：$NEW_TIME"
-
-    # 生成新的 cron 表達式
-    NEW_CRON_TIME=$(date -d "$NEW_TIME" "+%M %H %d %m *")
-
-    # 更新 crontab
-    (crontab -l 2>/dev/null | grep -v "$PYTHON_SCRIPT_PATH"; echo "$NEW_CRON_TIME python3 $PYTHON_SCRIPT_PATH >> $ERROR_LOG 2>&1") | crontab -
-
-    echo "新的 cron 排程已添加：$NEW_CRON_TIME 執行 $PYTHON_SCRIPT_PATH"
+    # 設置新的排程
+    update_cron "$NEXT_TIME"
 }
 
 # 停止排程
 stop_scheduler() {
-    (crontab -l 2>/dev/null | grep -v "$PYTHON_SCRIPT_PATH") | crontab -
-    echo "已移除 $PYTHON_SCRIPT_PATH 的排程"
+    (crontab -l 2>/dev/null | grep -v "$0") | crontab -
+    echo "已移除排程"
 }
 
 # API 控制功能
 case $1 in
     start)
-        echo "啟動排程..."
-        start_scheduler
+        run_task
         ;;
     stop)
-        echo "停止排程..."
         stop_scheduler
         ;;
     *)

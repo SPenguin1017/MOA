@@ -11,6 +11,7 @@ configs = configparser.ConfigParser()
 configs.read("CSConfig.ini", encoding="utf-8")
 tccalllog = configs.get("TCCALLLOG", "tccalllog")
 authorization = configs.get("AUTHORIZATION", "authorization")
+send_mail = configs.get("MAIL", "sendmail")
 
 # API Body
 body = {
@@ -56,16 +57,16 @@ try:
                 time_difference = current_time - f_start_time_dt
 
                 # 判斷是否超過 3 小時
-                if time_difference > timedelta(hours=1):
+                if time_difference > timedelta(hours=3):
                     print("超過 3 小時，發送告警郵件")
                     mail_url = configs.get("SHARE_SERVICE", "url")
                     jsondata = {
                         "service": "NOTICE",
                         "action": "sendMail",
                         "param": {
-                            "mail_to": "Penguin.Hsieh@chainsea.com.tw",
+                            "mail_to": send_mail,
                             "mail_cc": "",
-                            "subject": "資訊局-通話記錄告警",
+                            "subject": "農委會-通話記錄告警",
                             "content": "警告已三小時無通話記錄。",
                         },
                     }
