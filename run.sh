@@ -1,73 +1,86 @@
 #!/bin/bash
+# 獲取當前腳本所在的目錄
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 定義路徑
-INI_FILE="CSConfig.ini"
-PYTHON_SCRIPT_PATH="./MOA.py"
-ERROR_LOG="error.log"
+# 定義變數（使用相對路徑）
+PYTHON_SCRIPT_PATH="$BASE_DIR/MOA.py"
+INI_FILE="$BASE_DIR/CSConfig.ini"
+LOG_FILE="$BASE_DIR/log.txt"
 
-# 紀錄錯誤函數
+# 記錄錯誤日誌
 log_error() {
-    echo "$(date "+%Y-%m-%d %H:%M:%S") - 錯誤: $1" >> $ERROR_LOG
+    echo "$(date "+%Y-%m-%d %H:%M:%S") - sh錯誤: $1" >> "$LOG_FILE"
 }
 
-# 從 .ini 文件中提取時間
-get_next_time() {
-    grep "^time" $INI_FILE | sed 's/time = //'
+# 儲存 PID 到 INI 文件
+save_pid_to_ini() {
+    local pid=$1
+    sed -i "/^pid =/c\pid = $pid" "$INI_FILE"
+    echo "PID 已儲存到 $INI_FILE"
 }
 
-# 更新排程
-update_cron() {
-    local next_time=$1
+# 從 INI 文件中讀取 PID
+read_pid_from_ini() {
+    grep "^pid =" "$INI_FILE" | awk -F' = ' '{print $2}'
+}
 
-    # 計算時間（cron 格式）
-    CRON_TIME=$(date -d "$next_time" "+%M %H %d %m *")
-    if [ $? -ne 0 ]; then
-        log_error "無法解析時間格式：$next_time"
-        exit 1
+# 啟動 Python 任務
+start_task() {
+    local current_pid=$(read_pid_from_ini)
+    if [ -n "$current_pid" ] && ps -p "$current_pid" > /dev/null 2>&1; then
+        echo "服務已經在運行中，PID: $current_pid"
+        exit 0
     fi
 
-    # 更新 crontab
-    (crontab -l 2>/dev/null | grep -v "$0"; echo "$CRON_TIME $PWD/$0 start >> $ERROR_LOG 2>&1") | crontab -
-    echo "已添加新的排程：$CRON_TIME 執行 $0 start"
+    echo "啟動 $PYTHON_SCRIPT_PATH ..."
+    cd "$BASE_DIR"
+    nohup python3 "$PYTHON_SCRIPT_PATH" --MOA >> "$LOG_FILE" 2>&1 &
+    new_pid=$!
+    save_pid_to_ini "$new_pid"
+    echo "服務已啟動，PID: $new_pid"
 }
 
-# 執行主任務並設置下一次排程
-run_task() {
-    echo "執行 $PYTHON_SCRIPT_PATH..."
-    python3 $PYTHON_SCRIPT_PATH >> $ERROR_LOG 2>&1
-    if [ $? -ne 0 ]; then
-        log_error "執行 $PYTHON_SCRIPT_PATH 時發生錯誤"
-        exit 1
+# 停止 Python 任務
+stop_task() {
+    local current_pid=$(read_pid_from_ini)
+    if [ -n "$current_pid" ]; then
+        if ps -p "$current_pid" > /dev/null 2>&1; then
+            echo "停止服務，PID: $current_pid"
+            kill "$current_pid"
+            sed -i "/^pid =/c\pid = " "$INI_FILE"  # 清空 PID
+            echo "服務已停止"
+        else
+            echo "PID $current_pid 不存在，清理 INI 文件的 PID 設定"
+            sed -i "/^pid =/c\pid = " "$INI_FILE"
+        fi
+    else
+        echo "服務未在運行"
     fi
+}
 
-    # 從 .ini 文件中獲取下一次時間
-    NEXT_TIME=$(get_next_time)
-    if [ -z "$NEXT_TIME" ]; then
-        log_error "未能從 $INI_FILE 中提取時間"
-        exit 1
+# 查看日誌
+show_log() {
+    if [ -f "$LOG_FILE" ]; then
+        echo "顯示日誌內容："
+        tail -n 20 "$LOG_FILE"
+    else
+        echo "日誌文件不存在"
     fi
-    echo "下一次排程時間為：$NEXT_TIME"
-
-    # 設置新的排程
-    update_cron "$NEXT_TIME"
 }
 
-# 停止排程
-stop_scheduler() {
-    (crontab -l 2>/dev/null | grep -v "$0") | crontab -
-    echo "已移除排程"
-}
-
-# API 控制功能
+# 主程式邏輯
 case $1 in
     start)
-        run_task
+        start_task
         ;;
     stop)
-        stop_scheduler
+        stop_task
+        ;;
+    log)
+        show_log
         ;;
     *)
-        echo "用法: $0 {start|stop}"
+        echo "用法: $0 {start|stop|log}"
         exit 1
         ;;
 esac
