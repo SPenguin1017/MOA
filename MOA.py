@@ -23,8 +23,8 @@ AUTHORIZATION = configs.get("AUTHORIZATION", "authorization")
 SEND_MAIL = configs.get("ITEM", "sendmail")
 HOUR = int(configs.get("ITEM", "hour"))
 
-# global datetime.now()
-# datetime.now() = datetime.strptime("2024-12-16 14:30:00", "%Y-%m-%d %H:%M:%S")
+# global now()
+# now() = datetime.strptime("2024-12-16 14:30:00", "%Y-%m-%d %H:%M:%S")
 
 # 清除Log   
 def cleanLog():
@@ -77,7 +77,7 @@ def api(retry=3, retry_delay=5):
                     "Content-Type": "application/json",
                     "Authorization": AUTHORIZATION
                 },
-                timeout=10  # 加入 timeout 防止卡住
+                timeout=10
             )
 
             if response.status_code != 200:
@@ -104,34 +104,34 @@ def api(retry=3, retry_delay=5):
     # 如果多次重試後仍失敗，拋出異常
     raise Exception("API 請求失敗，已重試多次。")
  
-# # 檢核時間
-# def checkTime(f_start_time):
-#     # 將抓回來的時間轉換為 datetime
-#     f_start_time_dt = datetime.strptime(f_start_time, "%Y-%m-%d %H:%M:%S")
+# 檢核時間
+def checkTime(f_start_time):
+    # 將抓回來的時間轉換為 datetime
+    f_start_time_dt = datetime.strptime(f_start_time, "%Y-%m-%d %H:%M:%S")
 
-#     # 保存原始通話記錄的時間
-#     f_start_time_first = f_start_time_dt
+    # 保存原始通話記錄的時間
+    f_start_time_first = f_start_time_dt
 
-#     # 計算下一次排程時間：基於通話記錄時間加上 HOUR
-#     while f_start_time_dt <= datetime.now():
-#         f_start_time_dt += timedelta(hours=HOUR)
+    # 計算下一次排程時間：基於通話記錄時間加上 HOUR
+    while f_start_time_dt <= datetime.now():
+        f_start_time_dt += timedelta(hours=HOUR)
         
-#     # 如果計算出的時間與當前時間太接近，向後調整
-#     if (f_start_time_dt - datetime.now()).total_seconds() < 60:
-#         f_start_time_dt += timedelta(minutes=1)
+    # 如果計算出的時間與當前時間太接近，向後調整
+    if (f_start_time_dt - datetime.now()).total_seconds() < 60:
+        f_start_time_dt += timedelta(minutes=1)
 
-#     # 格式化下一次排程時間為字串
-#     new_f_start_time = f_start_time_dt.strftime("%Y-%m-%d %H:%M:%S")
+    # 格式化下一次排程時間為字串
+    new_f_start_time = f_start_time_dt.strftime("%Y-%m-%d %H:%M:%S")
 
-#     return f_start_time_first, new_f_start_time
+    return f_start_time_first, new_f_start_time
 
 # 告警跑馬燈
 def alert(f_start_time_first):
-    # marquee("true")
     if (datetime.now() - f_start_time_first) >= timedelta(hours = HOUR):
         if checkDay():
             log("超過允許時間，發送告警")
-            # marquee("false")
+            marquee("true")
+            marquee("false")
         else:
             log("超過允許時間，但不在可發送日期內")
     else:
@@ -217,12 +217,11 @@ def main():
             f_start_time = api()
             # f_start_time = "2024-12-16 14:00:00"
 
-            # f_start_time_first , new_f_start_time = checkTime(f_start_time)
+            f_start_time_first , new_f_start_time = checkTime(f_start_time)
 
             # 發送告警
-            # alert(f_start_time_first)    
-            alert(datetime.strptime(f_start_time, "%Y-%m-%d %H:%M:%S"))
-            
+            alert(f_start_time_first)    
+
             # 更新排程
             # update_cron(new_f_start_time)
 
